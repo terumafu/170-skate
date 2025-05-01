@@ -1,15 +1,9 @@
-local imageFiles = {}
-local imagePool = {}
-local imageRow = {}
-local scrollX = 0
-local totalWidth = 0
-local screenWidth = 0
-local backwardScrollCount = 0 
-local forceReset = false 
-local illiterateTitle = false 
-local rainbowHue = 0 
-
--- Your follow rules here
+HC = require('HC')
+local Entity = require("entity")
+local Player = require("player")
+local Wall = require("wall")
+local Section = require("section")
+local speed = 0;
 local followRules = {
     ["prototype1_high_high.png"] = {"prototype1_high_high.png", "prototype1_high_low.png", "prototype1_high_med.png"},
     ["prototype1_high_med.png"] = {"prototype1_med_high.png", "prototype1_med_med.png", "prototype1_med_low.png"},
@@ -21,137 +15,136 @@ local followRules = {
     ["prototype1_low_med.png"] = {"prototype1_med_high.png", "prototype1_med_med.png", "prototype1_med_low.png"},
     ["prototype1_low_low.png"] = {"prototype1_low_high.png", "prototype1_low_med.png", "prototype1_low_low.png"},
 }
+local dataTable = {
+    {address = "prototype1_high_high.png", front = "high",back = "high",walls = nil},
+    {address = "prototype1_high_med.png", front = "high",back = "med",walls = nil},
+    {address = "prototype1_high_low.png",front = "high",back = "low",walls = nil},
+    {address = "prototype1_med_high.png", front = "med",back = "high",walls = {{7,64,15,5,0},{40,56,40,5,0},{70,45,30,5,0},{100,25,40,5,-3.14/12},{123,21,10,5,0}}},
+    {address = "prototype1_med_med.png", front = "med",back = "med",walls = {{7,64,15,5,0},{21,71,15,5,0},{35,78,15,5,0},{45,83,15,5,0}, {59,89,15,5,0}, {85,83,30,5,0}, {125,83,10,5,0}}},
+    {address = "prototype1_med_low.png", front = "med",back = "low",walls = nil},
+    {address = "prototype1_low_high.png", front = "low",back = "high",walls = nil},
+    {address = "prototype1_low_med.png", front = "low",back = "med",walls = nil},
+    {address = "prototype1_low_low.png",front = "low",back = "low",walls = nil},
+}
 
+local entities = {}
+local levels = {}
+local scale = 2
+local scrollX = 0
+local totalWidth = 0
+local screenWidth = 0
+local currentSection = nil
+local player = nil
 function love.load()
+    love.keyboard.setKeyRepeat(true)
     love.math.setRandomSeed(os.time())
     screenWidth = love.graphics.getWidth()
-
-    -- Load all image filenames from /images
-    local files = love.filesystem.getDirectoryItems("images")
-    for _, file in ipairs(files) do
-        if file:match("%.png$") or file:match("%.jpg$") or file:match("%.jpeg$") then
-            table.insert(imageFiles, file)
+    local x = 0
+    
+    while #levels < 8 do
+        local random = return_valid_index()
+        currentSection = Section:new(x,0,2,dataTable[random].address)
+        table.insert(entities,currentSection)
+        local temp = {section = currentSection, initializedwalls = nil}
+        if dataTable[random].walls ~= nil then
+            temp.initializedwalls = {}
+            for index, item in ipairs(dataTable[random].walls) do
+                local wall = Wall:new(currentSection.x + item[1],currentSection.y + item[2],item[3],item[4],item[5])
+                table.insert(entities,wall)
+                table.insert(temp.initializedwalls,wall)
+            end
         end
+        table.insert(levels, temp)
+        x = x + 128
     end
-
-    -- Start with a random image
-    local first = imageFiles[love.math.random(#imageFiles)]
-    appendImage(first)
+    player = Player:new(10,10,10,10)
+    table.insert(entities,player)
 end
 
-function appendImage(filename)
-    local img = love.graphics.newImage("images/" .. filename)
-    table.insert(imageRow, { name = filename, image = img })
-    totalWidth = totalWidth + img:getWidth()
-end
-
-function getNextImageFilename()
-    if #imageRow == 0 then
-        return imageFiles[love.math.random(#imageFiles)]
-    end
-
-    local last = imageRow[#imageRow].name
-    local options = followRules[last]
-
-    if options and #options > 0 then
-        return options[love.math.random(#options)]
-    else
-        -- fallback to any image if no rule exists
-        return imageFiles[love.math.random(#imageFiles)]
+function return_valid_index()
+    local index = love.math.random(#dataTable)
+    while true do
+        if dataTable[index].walls ~= nil then
+            return index
+        end
+        index = love.math.random(#dataTable)
     end
 end
 
 function love.keypressed(key)
-    if forceReset then
-        backwardScrollCount = 0
-        if key == "left" and backwardScrollCount >= 0 then
-            return -- Prevent scrolling left beyond the start
-        end
-    end
-    if key == "right" then
-        if scrollX == 0 then
-            backwardScrollCount = 0
-        elseif scrollX < 0 then
-            backwardScrollCount = 0
-        elseif scrollX > 0 then
-            backwardScrollCount = backwardScrollCount - 1
-        end
-        scrollX = scrollX - 50
-        
-    elseif key == "left" then
-        if scrollX == 0 then
-            backwardScrollCount = 0
-        elseif scrollX < 0 then
-            backwardScrollCount = 0
-        elseif scrollX > 0 then
-            backwardScrollCount = backwardScrollCount + 1
-        end
-        scrollX = scrollX + 50
-    
+    if key == "space" then
+        player:pumpSpeed()
     end
 end
 
 function love.update(dt)
-    if -scrollX + screenWidth > totalWidth then
-        local nextImage = getNextImageFilename()
-        appendImage(nextImage)
+    if currentSection.x < screenWidth then
+        local random = return_valid_index()
+        currentSection = Section:new(currentSection.x + 128,0,2,dataTable[random].address)
+        table.insert(entities,currentSection)
+        local temp = {section = currentSection, initializedwalls = nil}
+        if dataTable[random].walls ~= nil then
+            temp.initializedwalls = {}
+            for index, item in ipairs(dataTable[random].walls) do
+                local wall = Wall:new(currentSection.x + item[1],currentSection.y + item[2],item[3],item[4],item[5])
+                table.insert(entities,wall)
+                table.insert(temp.initializedwalls,wall)
+            end
+        end
+        table.insert(levels, temp)
     end
 
-    -- Force reset if backward scroll count exceeds a threshold
-    if backwardScrollCount > 20 then
-        scrollX = 0
-        forceReset = true
-        illiterateTitle = true
+    for _, entity in ipairs(entities) do
+        entity:update(dt)
     end
 
-    rainbowHue = (rainbowHue + dt * 50) % 360
+    diff = 0 
+    if false then
+        if love.keyboard.isDown('right') then
+            diff = -speed 
+            for _, level in ipairs(levels) do
+                level.section:move(diff,0)
+                if level.initializedwalls ~= nil then
+                    -- update x on all walls
+                    for _, wall in ipairs(level.initializedwalls) do
+                        wall:move(diff,0)
+                    end
+                end
+            end
+        end
+        if love.keyboard.isDown('left') then
+            diff = speed
+            for _, level in ipairs(levels) do
+                level.section:move(diff,0)
+                if level.initializedwalls ~= nil then
+                    -- update x on all walls
+                    for _, wall in ipairs(level.initializedwalls) do
+                        wall:move(diff,0)
+                    end
+                end
+            end
+        end
+    end
+    for shape, seperating_vector in pairs(HC.collisions(player.shape)) do
+        for  _, entity in ipairs(entities) do
+            if entity.type == "wall" then 
+                if shape == entity.shape then
+                    player:onCollision(seperating_vector)
+                end
+            end
+        end
+    end
 end
 
 function love.draw()
-    local x = scrollX
-    for _, entry in ipairs(imageRow) do
-        love.graphics.draw(entry.image, x, 100)
-        x = x + entry.image:getWidth()
-    end
-
-    -- Display messages based on backward scroll count
-    if scrollX > 0 then
-        love.graphics.setColor(1, 1, 1) 
-        if backwardScrollCount < 5 then
-            love.graphics.print("Why are you scrolling backward?", 10, 10)
-        elseif backwardScrollCount < 10 then
-            love.graphics.print("Seriously, there's nothing here.", 10, 50)
-        elseif backwardScrollCount < 15 then
-            love.graphics.print("Look, it's just the void, there's -nothing- totally rad past this point.", 10, 100)
-        elseif backwardScrollCount < 20 then
-            love.graphics.print("Fine, you know what, keep going then.", 10, 150)
-        else
-            love.graphics.print("How about an award? Title of ILLITERATE.", 10, 200)
+    love.graphics.push()
+    love.graphics.scale(scale,scale)
+    for _, entity in ipairs(entities) do
+        entity:draw()
+        if entity.shape ~= nil then
+            --entity.shape:draw('fill')
         end
-        love.graphics.setColor(1, 1, 1, 1) 
     end
-
-    -- Permanently display "ILLITERATE" if forced reset
-    if illiterateTitle then
-        local r, g, b = hslToRgb(rainbowHue / 360, 1, 0.5) 
-        love.graphics.setColor(r, g, b) 
-        love.graphics.print("ILLITERATE", screenWidth / 2 - 50, 10) 
-        love.graphics.setColor(1, 1, 1, 1) 
-    end
+    love.graphics.pop()
 end
 
--- Helper function to convert HSL to RGB
-function hslToRgb(h, s, l)
-    if s == 0 then return l, l, l end
-    local function hueToRgb(p, q, t)
-        if t < 0 then t = t + 1 end
-        if t > 1 then t = t - 1 end
-        if t < 1 / 6 then return p + (q - p) * 6 * t end
-        if t < 1 / 2 then return q end
-        if t < 2 / 3 then return p + (q - p) * (2 / 3 - t) * 6 end
-        return p
-    end
-    local q = l < 0.5 and l * (1 + s) or l + s - l * s
-    local p = 2 * l - q
-    return hueToRgb(p, q, h + 1 / 3), hueToRgb(p, q, h), hueToRgb(p, q, h - 1 / 3)
-end
